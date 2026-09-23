@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>NoOff Guard — Device Tracker Portal</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<style>
+  :root {
+    --bg: #0A0F1E;
+    --bg2: #0A1931;
+    --card: #141E33;
+    --blue: #1E90FF;
+    --green: #22c55e;
+    --amber: #f59e0b;
+    --red: #ef4444;
+    --text: #ffffff;
+    --muted: rgba(255,255,255,0.5);
+    --border: rgba(255,255,255,0.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: linear-gradient(180deg, var(--bg2) 0%, var(--bg) 100%);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  .nav {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 24px;
+    background: rgba(10,25,49,0.9);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 1000;
+    backdrop-filter: blur(10px);
+  }
+  .nav .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 16px; cursor: pointer; }
+  .nav .brand .icon {
+    width: 32px; height: 32px;
+    background: rgba(30,144,255,0.15);
+    border: 1px solid rgba(30,144,255,0.3);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center; font-size: 16px;
+  }
+  .nav .links { display: flex; gap: 18px; }
+  .nav .links a { color: var(--muted); text-decoration: none; font-size: 13px; font-weight: 600; cursor: pointer; transition: color .2s; }
+  .nav .links a:hover { color: var(--blue); }
+
+  .page { display: none; min-height: calc(100vh - 65px); padding: 40px 20px; }
+  .page.active { display: block; }
+
+  .hero { max-width: 520px; margin: 40px auto; text-align: center; }
+  .hero .logo {
+    width: 72px; height: 72px; margin: 0 auto 20px;
+    background: rgba(30,144,255,0.15);
+    border: 1.5px solid rgba(30,144,255,0.3);
+    border-radius: 20px;
+    display: flex; align-items: center; justify-content: center; font-size: 34px;
+  }
+  .hero h1 { font-size: 28px; font-weight: 800; margin-bottom: 8px; }
+  .hero p.sub { color: var(--muted); font-size: 12px; letter-spacing: 1.5px; font-weight: 600; margin-bottom: 36px; }
+  .search-box { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 24px; }
+  .search-box label { display: block; text-align: left; color: var(--muted); font-size: 11px; letter-spacing: 1.2px; font-weight: 700; margin-bottom: 10px; }
+  .code-input { display: flex; align-items: center; background: var(--bg); border: 1.5px solid var(--border); border-radius: 12px; padding: 0 16px; transition: border-color .2s; }
+  .code-input:focus-within { border-color: var(--blue); }
+  .code-input .prefix { font-weight: 800; color: var(--blue); letter-spacing: 2px; font-size: 16px; user-select: none; }
+  .code-input input { flex: 1; background: transparent; border: none; outline: none; color: white; font-size: 16px; font-weight: 700; letter-spacing: 3px; padding: 16px 4px; font-family: inherit; }
+  .code-input input::placeholder { color: rgba(255,255,255,0.2); letter-spacing: 3px; }
+  .btn { width: 100%; margin-top: 16px; padding: 16px; background: var(--blue); color: white; border: none; border-radius: 12px; font-size: 14px; font-weight: 800; letter-spacing: 1px; cursor: pointer; transition: opacity .2s, transform .05s; }
+  .btn:hover { opacity: .9; }
+  .btn:active { transform: scale(.98); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .error { color: #ff6b6b; font-size: 12px; margin-top: 12px; min-height: 16px; }
+  .footer-note { color: rgba(255,255,255,0.25); font-size: 11px; margin-top: 30px; }
+
+  .radar-wrap { max-width: 900px; margin: 0 auto; }
+  .radar-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; }
+  .radar-header h2 { font-size: 18px; font-weight: 800; }
+  .radar-header .code-badge { background: rgba(30,144,255,0.15); border: 1px solid rgba(30,144,255,0.3); color: var(--blue); padding: 6px 12px; border-radius: 8px; font-weight: 800; letter-spacing: 1px; font-size: 13px; }
+  #map { height: 480px; border-radius: 16px; border: 1px solid var(--border); overflow: hidden; background: var(--card); }
+
+  .offline-banner {
+    display: flex; align-items: center; gap: 10px;
+    margin: 0 0 14px 0; padding: 12px 16px;
+    border-radius: 12px;
+    font-weight: 800; font-size: 13px; letter-spacing: 1.2px;
+    background: rgba(239,68,68,0.15);
+    border: 1px solid rgba(239,68,68,0.5);
+    color: #ff6b6b;
+  }
+  .offline-banner .dot { width: 10px; height: 10px; border-radius: 50%; background: currentColor; animation: blink 1.2s infinite; }
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.2; } }
+  .offline-banner.state-online {
+    background: rgba(34,197,94,0.12);
+    border-color: rgba(34,197,94,0.5);
+    color: var(--green);
+  }
+
+  .distance-hud {
+    margin-top: 16px; background: var(--card);
+    border: 1px solid var(--border); border-radius: 16px;
+    padding: 20px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+    transition: border-color .3s, box-shadow .3s;
+  }
+  .distance-hud.state-far    { border-color: rgba(239,68,68,0.5);  box-shadow: 0 0 20px rgba(239,68,68,0.15); }
+  .distance-hud.state-medium { border-color: rgba(245,158,11,0.5); box-shadow: 0 0 20px rgba(245,158,11,0.15); }
+  .distance-hud.state-close  { border-color: rgba(34,197,94,0.5);  box-shadow: 0 0 20px rgba(34,197,94,0.15); }
+  .distance-hud.state-found  { border-color: rgba(34,197,94,0.9);  box-shadow: 0 0 40px rgba(34,197,94,0.4); animation: foundPulse 1s infinite; }
+  @keyframes foundPulse {
+    0%,100% { box-shadow: 0 0 40px rgba(34,197,94,0.4); }
+    50%     { box-shadow: 0 0 60px rgba(34,197,94,0.8); }
+  }
+  .distance-hud .circle {
+    width: 90px; height: 90px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,0.05);
+    border: 3px solid var(--muted);
+    font-weight: 800; font-size: 22px; flex-shrink: 0;
+    transition: border-color .3s, color .3s;
+  }
+  .distance-hud.state-far    .circle { border-color: var(--red);   color: var(--red); }
+  .distance-hud.state-medium .circle { border-color: var(--amber); color: var(--amber); }
+  .distance-hud.state-close  .circle { border-color: var(--green); color: var(--green); }
+  .distance-hud.state-found  .circle { border-color: var(--green); color: var(--green); }
+  .distance-hud .meta { flex: 1; min-width: 220px; }
+  .distance-hud .meta .label { color: var(--muted); font-size: 11px; letter-spacing: 1px; font-weight: 700; }
+  .distance-hud .meta .value { font-size: 18px; font-weight: 800; margin-top: 4px; }
+  .distance-hud .meta .hint  { color: var(--muted); font-size: 12px; margin-top: 6px; }
+
+  .radar-status {
+    margin-top: 12px; background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 16px; display: flex; align-items: center; gap: 14px;
+  }
+  .pulse { width: 12px; height: 12px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 0 rgba(34,197,94,0.7); animation: pulse 1.8s infinite; flex-shrink: 0; }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(34,197,94,0.7); }
+    70%  { box-shadow: 0 0 0 12px rgba(34,197,94,0); }
+    100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+  }
+  .radar-status .info { flex: 1; }
+  .radar-status .info .label { color: var(--muted); font-size: 11px; letter-spacing: 1px; font-weight: 700; }
+  .radar-status .info .value { font-size: 14px; font-weight: 700; margin-top: 4px; }
+
+  .radar-actions { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn-secondary { padding: 12px 20px; background: var(--card); color: white; border: 1px solid var(--border); border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer; text-decoration: none; display: inline-block; }
+  .btn-secondary:hover { border-color: var(--blue); color: var(--blue); }
+  .btn-secondary.active { border-color: var(--green); color: var(--green); }
+  .btn-secondary.danger {
+    background: rgba(239,68,68,0.15);
+    border-color: rgba(239,68,68,0.6);
+    color: #ff6b6b;
+    font-weight: 800;
+  }
+  .btn-secondary.danger:hover {
+    background: rgba(239,68,68,0.3);
+    border-color: var(--red);
+    color: white;
+  }
+  .btn-secondary.ringing {
+    background: var(--red);
+    border-color: var(--red);
+    color: white;
+    animation: ringPulse 1s infinite;
+  }
+  @keyframes ringPulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.7); }
+    50%     { box-shadow: 0 0 0 12px rgba(239,68,68,0); }
+  }
+
+  .content { max-width: 760px; margin: 0 auto; line-height: 1.7; }
+  .content h1 { font-size: 26px; font-weight: 800; margin-bottom: 20px; }
+  .content h2 { font-size: 18px; font-weight: 800; margin: 28px 0 10px; color: var(--blue); }
+  .content p, .content li { color: rgba(255,255,255,0.75); font-size: 14px; margin-bottom: 10px; }
+  .content ul { padding-left: 22px; margin-bottom: 14px; }
+  .content .updated { color: var(--muted); font-size: 12px; margin-bottom: 30px; }
+
+  .found-overlay {
+    position: fixed; inset: 0;
+    background: rgba(10,15,30,0.95);
+    display: none;
+    align-items: center; justify-content: center;
+    z-index: 5000;
+    animation: fadeIn .3s ease;
+  }
+  .found-overlay.show { display: flex; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .found-overlay .box {
+    text-align: center;
+    padding: 40px;
+    border: 2px solid var(--green);
+    border-radius: 24px;
+    background: rgba(34,197,94,0.08);
+    max-width: 420px;
+    box-shadow: 0 0 80px rgba(34,197,94,0.5);
+  }
+  .found-overlay .box .big { font-size: 64px; margin-bottom: 12px; }
+  .found-overlay .box h2 { font-size: 28px; font-weight: 800; color: var(--green); margin-bottom: 8px; }
+  .found-overlay .box p  { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+
+  .reconnect-flash {
+    position: fixed; inset: 0;
+    background: rgba(239,68,68,0.35);
+    pointer-events: none;
+    display: none;
+    z-index: 4000;
+    animation: alarmFlash 0.6s infinite alternate;
+  }
+  .reconnect-flash.show { display: block; }
+  @keyframes alarmFlash {
+    from { background: rgba(239,68,68,0.15); }
+    to   { background: rgba(239,68,68,0.55); }
+  }
+
+  .reconnect-popup {
+    position: fixed; top: 80px; left: 50%;
+    transform: translateX(-50%) translateY(-40px);
+    background: #141E33;
+    border: 2px solid var(--red);
+    border-radius: 16px;
+    padding: 20px 26px;
+    text-align: center;
+    z-index: 4500;
+    display: none;
+    box-shadow: 0 0 60px rgba(239,68,68,0.6);
+    max-width: 90vw;
+  }
+  .reconnect-popup.show { display: block; animation: popIn .35s ease forwards; }
+  @keyframes popIn {
+    from { opacity: 0; transform: translateX(-50%) translateY(-40px); }
+    to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+  }
+  .reconnect-popup h3 { color: var(--red); font-size: 20px; font-weight: 800; margin-bottom: 8px; }
+  .reconnect-popup p { color: rgba(255,255,255,0.75); font-size: 13px; margin-bottom: 16px; }
+  .reconnect-popup button {
+    background: var(--red); color: white; border: none;
+    padding: 10px 22px; border-radius: 10px;
+    font-weight: 800; font-size: 13px; cursor: pointer;
+  }
+
+  .photo-modal {
+    position: fixed; inset: 0;
+    background: rgba(10,15,30,0.95);
+    display: none;
+    align-items: center; justify-content: center;
+    z-index: 5500;
+    padding: 20px;
+  }
+  .photo-modal.show { display: flex; }
+  .photo-modal .inner {
+    background: #141E33;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 24px;
+    max-width: 480px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 0 60px rgba(30,144,255,0.35);
+  }
+  .photo-modal h3 { color: var(--blue); font-size: 18px; font-weight: 800; margin-bottom: 12px; }
+  .photo-modal img {
+    width: 100%;
+    border-radius: 12px;
+    margin: 12px 0;
+    background: #0A0F1E;
+    min-height: 200px;
+    object-fit: cover;
+  }
+  .photo-modal p { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+  .photo-modal .controls { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .photo-modal button {
+    background: var(--blue); color: white; border: none;
+    padding: 12px 22px; border-radius: 10px;
+    font-weight: 800; font-size: 13px; cursor: pointer;
+  }
+  .photo-modal button.close { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+  .photo-modal button:disabled { opacity: .5; cursor: not-allowed; }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<div class="nav">
+  <div class="brand" onclick="showPage('home')">
+    <div class="icon">🛡️</div>
+    NoOff Guard
+  </div>
+  <div class="links">
+    <a onclick="showPage('home')">Home</a>
+    <a onclick="showPage('about')">About</a>
+    <a onclick="showPage('policy')">Privacy Policy</a>
+  </div>
+</div>
+
+<!-- HOME -->
+<div id="page-home" class="page active">
+  <div class="hero">
+    <div class="logo">🛡️</div>
+    <h1>Locate Your Device</h1>
+    <p class="sub">SECURE DEVICE RECOVERY PORTAL</p>
+
+    <div class="search-box">
+      <label for="codeInput">ENTER YOUR DEVICE CODE</label>
+      <div class="code-input">
+        <span class="prefix">NOFF-</span>
+        <input id="codeInput" type="text" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="off" />
+      </div>
+      <button class="btn" id="searchBtn" onclick="lookupDevice()">LOCATE DEVICE</button>
+      <div class="error" id="errorMsg"></div>
+    </div>
+
+    <p class="footer-note">You can find your device code inside the NoOff Guard app under "Device Code".</p>
+  </div>
+</div>
+
+<!-- RADAR -->
+<div id="page-radar" class="page">
+  <div class="radar-wrap">
+    <div class="radar-header">
+      <h2>📡 Live Device Radar</h2>
+      <span class="code-badge" id="radarCode">NOFF-000000</span>
+    </div>
+
+    <div id="offlineBanner" class="offline-banner" style="display:none;">
+      <span class="dot"></span>
+      <span id="offlineText">DEVICE OFFLINE</span>
+    </div>
+
+    <div id="map"></div>
+
+    <div class="distance-hud" id="distanceHud">
+      <div class="circle" id="distanceCircle">—</div>
+      <div class="meta">
+        <div class="label">DISTANCE TO DEVICE</div>
+        <div class="value" id="distanceValue">Awaiting both GPS signals…</div>
+        <div class="hint" id="distanceHint">Enable location on this device to use proximity beeps.</div>
+      </div>
+      <button class="btn-secondary" id="beepToggle" onclick="toggleBeeps()" style="align-self:center;">🔊 Beeps ON</button>
+    </div>
+
+    <div class="radar-status">
+      <div class="pulse"></div>
+      <div class="info">
+        <div class="label">LAST KNOWN LOCATION</div>
+        <div class="value" id="radarCoords">Waiting for data…</div>
+      </div>
+    </div>
+
+    <div class="radar-actions">
+      <button class="btn-secondary danger" id="ringBtn" onclick="ringDevice()">🔔 Ring Device Now</button>
+      <button class="btn-secondary" id="stopRingBtn" onclick="stopRing()" style="display:none;">⏹ Stop Ringing</button>
+      <button class="btn-secondary" id="photoBtn" onclick="capturePhoto()">📸 Capture Photo</button>
+      <a class="btn-secondary" id="gmapsLink" target="_blank" rel="noopener">Open in Google Maps</a>
+      <button class="btn-secondary" onclick="showPage('home'); stopTracking();">← Search Another Device</button>
+    </div>
+  </div>
+</div>
+
+<!-- ABOUT -->
+<div id="page-about" class="page">
+  <div class="content">
+    <h1>About NoOff Guard</h1>
+    <p class="updated">Device protection & recovery, built for peace of mind.</p>
+
+    <h2>What is NoOff Guard?</h2>
+    <p>NoOff Guard is a device protection application designed to help you safeguard your phone and recover it in the event of loss or theft. Once protection is enabled, critical actions such as powering off, disabling GPS, turning off mobile data, or uninstalling the app require PIN verification.</p>
+
+    <h2>Activation time</h2>
+    <p>
+      Once your payment is confirmed, activation of your NoOff Guard tracker begins immediately.
+      In most cases the tracker is fully enabled in <strong>under 1 minute</strong>. In rare cases —
+      for example, when the device is offline at the moment of purchase, or when Firebase needs
+      to sync across regions — activation may take up to a <strong>maximum of 7 hours</strong>.
+    </p>
+    <p>
+      You can track activation progress from your app: once the "Activate Protection" screen
+      disappears and the dashboard loads, your tracker is live. If more than 7 hours have passed
+      and activation has not completed, please sign out and sign back in — this forces a fresh
+      sync with our servers.
+    </p>
+
+    <h2>How the tracking portal works</h2>
+    <p>When you sign up inside the NoOff Guard mobile app, a unique device code is generated (for example, <strong>NOFF-372030</strong>). This code is linked to your device's real-time location, securely transmitted to our servers approximately every 15 seconds while the device is online.</p>
+    <p>By entering your device code on this portal, you can view the last known location of your device on a live map — and, when using a phone, follow proximity beeps to narrow down its location on the ground.</p>
+    <p>Additional recovery tools include:</p>
+    <ul>
+      <li><strong>Ring Device Now</strong> — forces the target phone to play a loud alarm, even when muted.</li>
+      <li><strong>Capture Photo</strong> — silently takes a front-camera photo on the target phone and uploads it to your account.</li>
+      <li><strong>Offline detection</strong> — alerts you the moment the device reconnects after being offline.</li>
+    </ul>
+
+    <h2>Data & privacy</h2>
+    <p>We only store the information necessary to provide the service: your email, device code, and last known coordinates. Location data is only accessible to someone who knows your unique device code. See our <a onclick="showPage('policy')" style="color:var(--blue); cursor:pointer;">Privacy Policy</a> for full details.</p>
+  </div>
+</div>
+
+<!-- PRIVACY -->
+<div id="page-policy" class="page">
+  <div class="content">
+    <h1>Privacy Policy</h1>
+    <p class="updated">Last updated: 2025</p>
+    <h2>1. Information We Collect</h2>
+    <ul>
+      <li><strong>Account data:</strong> email address and a PIN you provide when registering.</li>
+      <li><strong>Device code:</strong> a unique identifier (e.g. NOFF-372030).</li>
+      <li><strong>Location data:</strong> approximate GPS coordinates of your registered device, collected at intervals while protection is active.</li>
+      <li><strong>Recovery photos:</strong> a front-camera image, only captured when you explicitly trigger the "Capture Photo" action from your account.</li>
+      <li><strong>Searcher location:</strong> when you use the proximity radar, your current position is used locally in your browser to compute distance. It is never stored or transmitted by us.</li>
+    </ul>
+    <h2>2. How We Use Your Information</h2>
+    <ul>
+      <li>To display the location of your device on this portal when you enter your device code.</li>
+      <li>To verify your identity when disabling protection features.</li>
+      <li>To help recover your device through alarms, photos, and location history.</li>
+      <li>To maintain the security and integrity of the service.</li>
+    </ul>
+    <p>We do <strong>not</strong> sell, rent, or share your personal information with third parties for marketing purposes.</p>
+    <h2>3. Who Can See Your Location and Photos</h2>
+    <p>Your location and recovery photos are linked to your device code. Anyone who knows the exact code can view them on this portal. Keep your device code private.</p>
+    <h2>4. Data Storage & Security</h2>
+    <p>Data is stored securely in Google Firebase Realtime Database and Firebase Storage. Access is restricted so that only authenticated users can modify their own records. All transmissions use HTTPS.</p>
+    <h2>5. Data Retention</h2>
+    <p>Location data is continuously overwritten with the most recent known position. Recovery photos are retained until you delete them from your account. Account data is retained until you request deletion.</p>
+    <h2>6. Children's Privacy</h2>
+    <p>NoOff Guard is not intended for use by children under 13.</p>
+    <h2>7. Your Rights</h2>
+    <p>You may request access to, correction of, or deletion of your personal data at any time by contacting us through the app.</p>
+    <h2>8. Changes to This Policy</h2>
+    <p>We may update this policy from time to time. Continued use of the service means you accept the updated policy.</p>
+    <h2>9. Contact</h2>
+    <p>For any privacy-related questions, please contact us via the NoOff Guard app.</p>
+  </div>
+</div>
+
+<!-- FOUND OVERLAY -->
+<div class="found-overlay" id="foundOverlay">
+  <div class="box">
+    <div class="big">🎯</div>
+    <h2>DEVICE FOUND</h2>
+    <p>You are within 3 meters. Look around you — the device is very close.</p>
+    <button class="btn-secondary" onclick="dismissFound()">Continue Tracking</button>
+  </div>
+</div>
+
+<!-- RECONNECT ALARM -->
+<div class="reconnect-flash" id="reconnectFlash"></div>
+<div class="reconnect-popup" id="reconnectPopup">
+  <h3>⚠️ DEVICE BACK ONLINE</h3>
+  <p>The tracked device just reconnected to the network.</p>
+  <button onclick="dismissReconnect()">Acknowledge</button>
+</div>
+
+<!-- PHOTO MODAL -->
+<div class="photo-modal" id="photoModal">
+  <div class="inner">
+    <h3 id="photoTitle">📸 Recovery Photo</h3>
+    <img id="photoImg" src="" alt="" />
+    <p id="photoMeta">Captured just now</p>
+    <div class="controls">
+      <button onclick="requestAnotherPhoto()" id="photoAgainBtn">Take Another</button>
+      <button class="close" onclick="closePhotoModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+
+<script>
+  // ─── Firebase ────────────────────────────────────────────
+  const firebaseConfig = {
+    apiKey: "AIzaSyCKGmlv_Ia0wGY_j96sjX1obyu_psZqIns",
+    authDomain: "nooff-guard.firebaseapp.com",
+    databaseURL: "https://nooff-guard-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "nooff-guard",
+    storageBucket: "nooff-guard.firebasestorage.app",
+    messagingSenderId: "828731218639",
+    appId: "1:828731218639:web:b4b2c0f63408ad39f975ba",
+    measurementId: "G-WZJ91Q7Q2E"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+  const storage = firebase.storage();
+
+  // ─── Router ──────────────────────────────────────────────
+  function showPage(name) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('page-' + name).classList.add('active');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (name === 'radar' && radarMap) setTimeout(() => radarMap.invalidateSize(), 150);
+  }
+
+  // ─── Input ───────────────────────────────────────────────
+  const codeInput = document.getElementById('codeInput');
+  codeInput.addEventListener('input', e => {
+    let v = e.target.value.toUpperCase().replace(/[^0-9]/g, '');
+    if (v.length > 6) v = v.slice(0, 6);
+    e.target.value = v;
+  });
+  codeInput.addEventListener('keydown', e => { if (e.key === 'Enter') lookupDevice(); });
+
+  // ─── State ───────────────────────────────────────────────
+  let radarMap = null;
+  let radarMarker = null;
+  let meMarker   = null;
+  let trackLine  = null;
+  let liveRef    = null;
+  let watchId    = null;
+  let targetLat  = null, targetLng = null;
+  let myLat      = null, myLng     = null;
+  let beepsOn    = true;
+  let foundShown = false;
+  let beepTimerId = null;
+  let nextBeepInterval = null;
+
+  let currentUid = null;
+  let ringStateRef = null;
+
+  let heartbeatRef = null;
+  let lastHeartbeatEpoch = 0;
+  let deviceWasOffline = false;
+  let offlineCheckTimer = null;
+  const OFFLINE_THRESHOLD_MS = 90 * 1000;   // 90s (heartbeat every 15s + margin)
+  const LONG_OFFLINE_MS      = 5 * 60 * 1000; // 5 min = real offline, not a blip
+
+  let photoRequestRef = null;
+  let photoListenerStarted = false;
+
+  // ─── Lookup ──────────────────────────────────────────────
+  async function lookupDevice() {
+    const digits = codeInput.value.trim();
+    const errorEl = document.getElementById('errorMsg');
+    const btn = document.getElementById('searchBtn');
+    errorEl.textContent = '';
+
+    if (digits.length !== 6) {
+      errorEl.textContent = 'Please enter all 6 digits of your device code.';
+      return;
+    }
+    const fullCode = 'NOFF-' + digits;
+    btn.disabled = true; btn.textContent = 'SEARCHING…';
+
+    try {
+      const devSnap = await db.ref('devices/' + fullCode).get();
+      if (!devSnap.exists()) {
+        errorEl.textContent = 'No device found with that code. Please check and try again.';
+        btn.disabled = false; btn.textContent = 'LOCATE DEVICE';
+        return;
+      }
+      const uid = devSnap.val().uid;
+      if (!uid) { errorEl.textContent = 'Device record incomplete.'; btn.disabled = false; btn.textContent = 'LOCATE DEVICE'; return; }
+
+      currentUid = uid;
+      document.getElementById('radarCode').textContent = fullCode;
+      showPage('radar');
+      initMap();
+      startTracking(uid);
+      startMyLocation();
+      listenForPhotos(uid);
+    } catch (err) {
+      console.error(err);
+      errorEl.textContent = 'Error contacting server. Please try again.';
+    } finally {
+      btn.disabled = false; btn.textContent = 'LOCATE DEVICE';
+    }
+  }
+
+  function startTracking(uid) {
+    if (liveRef) liveRef.off();
+    liveRef = db.ref('users/' + uid + '/lastLocation');
+    liveRef.on('value', snap => {
+      if (!snap.exists()) {
+        document.getElementById('radarCoords').textContent = 'Waiting for device to report location…';
+        return;
+      }
+      const loc = snap.val();
+      updateTarget(loc.lat, loc.lng, loc.time);
+    });
+
+    if (heartbeatRef) heartbeatRef.off();
+    heartbeatRef = db.ref('users/' + uid + '/online/lastSeen');
+    heartbeatRef.on('value', snap => {
+      if (!snap.exists()) { setOfflineUI(true, 'never seen online'); return; }
+      const epoch = new Date(snap.val()).getTime();
+      handleHeartbeat(epoch);
+    });
+
+    if (offlineCheckTimer) clearInterval(offlineCheckTimer);
+    offlineCheckTimer = setInterval(() => {
+      if (!lastHeartbeatEpoch) return;
+      const age = Date.now() - lastHeartbeatEpoch;
+      if (age > OFFLINE_THRESHOLD_MS && !deviceWasOffline) {
+        setOfflineUI(true, 'no signal for ' + Math.round(age/1000) + 's');
+      }
+    }, 5000);
+  }
+
+  function stopTracking() {
+    if (liveRef)      { liveRef.off();      liveRef = null; }
+    if (heartbeatRef) { heartbeatRef.off(); heartbeatRef = null; }
+    if (ringStateRef) { ringStateRef.off(); ringStateRef = null; }
+    if (offlineCheckTimer) { clearInterval(offlineCheckTimer); offlineCheckTimer = null; }
+    if (watchId != null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+    if (beepTimerId) { clearTimeout(beepTimerId); beepTimerId = null; }
+    stopSiren();
+
+    targetLat = targetLng = myLat = myLng = null;
+    foundShown = false;
+    currentUid = null;
+    lastHeartbeatEpoch = 0;
+    deviceWasOffline = false;
+
+    const ringBtn = document.getElementById('ringBtn');
+    if (ringBtn) { ringBtn.classList.remove('ringing'); ringBtn.textContent = '🔔 Ring Device Now'; }
+    const stopBtn = document.getElementById('stopRingBtn');
+    if (stopBtn) stopBtn.style.display = 'none';
+
+    if (radarMap) { radarMap.remove(); radarMap = null; }
+    radarMarker = meMarker = trackLine = null;
+
+    photoListenerStarted = false;
+    if (photoRequestRef) { photoRequestRef.off(); photoRequestRef = null; }
+  }
+
+  // ─── Map ────────────────────────────────────────────────
+  function initMap() {
+    if (radarMap) { setTimeout(() => radarMap.invalidateSize(), 100); return; }
+    radarMap = L.map('map').setView([-32.785, 26.834], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, attribution: '© OpenStreetMap contributors'
+    }).addTo(radarMap);
+    setTimeout(() => radarMap.invalidateSize(), 200);
+  }
+
+  function updateTarget(lat, lng, timeIso) {
+    targetLat = Number(lat); targetLng = Number(lng);
+    if (!radarMap) return;
+
+    if (!radarMarker) {
+      const icon = L.divIcon({
+        className: 'device-marker',
+        html: `<div style="width:22px;height:22px;border-radius:50%;background:#1E90FF;border:3px solid #fff;box-shadow:0 0 0 6px rgba(30,144,255,0.35)"></div>`,
+        iconSize: [22,22], iconAnchor: [11,11]
+      });
+      radarMarker = L.marker([lat, lng], { icon }).addTo(radarMap);
+    } else {
+      radarMarker.setLatLng([lat, lng]);
+    }
+
+    if (myLat == null) radarMap.setView([lat, lng], 15, { animate: true });
+
+    const coords = `${targetLat.toFixed(5)}, ${targetLng.toFixed(5)}`;
+    const when   = timeIso ? new Date(timeIso).toLocaleString() : 'just now';
+    document.getElementById('radarCoords').textContent = `${coords}  •  ${when}`;
+    document.getElementById('gmapsLink').href = `https://www.google.com/maps?q=${lat},${lng}`;
+
+    recomputeDistance();
+  }
+
+  // ─── My location ────────────────────────────────────────
+  function startMyLocation() {
+    if (!navigator.geolocation) {
+      document.getElementById('distanceHint').textContent =
+        'Your browser does not support location. Beeps disabled.';
+      return;
+    }
+    watchId = navigator.geolocation.watchPosition(
+      pos => {
+        myLat = pos.coords.latitude;
+        myLng = pos.coords.longitude;
+
+        if (radarMap) {
+          if (!meMarker) {
+            const icon = L.divIcon({
+              className: 'me-marker',
+              html: `<div style="width:18px;height:18px;border-radius:50%;background:#22c55e;border:3px solid #fff;box-shadow:0 0 0 4px rgba(34,197,94,0.35)"></div>`,
+              iconSize: [18,18], iconAnchor: [9,9]
+            });
+            meMarker = L.marker([myLat, myLng], { icon }).addTo(radarMap);
+          } else {
+            meMarker.setLatLng([myLat, myLng]);
+          }
+
+          if (targetLat != null && targetLng != null) {
+            if (!trackLine) {
+              trackLine = L.polyline([[myLat,myLng],[targetLat,targetLng]], {
+                color:'#1E90FF', weight:2, dashArray:'6 6', opacity:0.7
+              }).addTo(radarMap);
+            } else {
+              trackLine.setLatLngs([[myLat,myLng],[targetLat,targetLng]]);
+            }
+            const bounds = L.latLngBounds([[myLat,myLng],[targetLat,targetLng]]);
+            radarMap.fitBounds(bounds, { padding: [60,60], maxZoom: 18 });
+          }
+        }
+        recomputeDistance();
+      },
+      err => {
+        console.warn('Geolocation error', err);
+        document.getElementById('distanceHint').textContent =
+          'Enable location permission on this device to use proximity beeps.';
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+    );
+  }
+
+  // ─── Distance + beeps ───────────────────────────────────
+  function haversine(lat1, lng1, lat2, lng2) {
+    const R = 6371000;
+    const toRad = d => d * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a = Math.sin(dLat/2)**2 +
+              Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+              Math.sin(dLng/2)**2;
+    return 2 * R * Math.asin(Math.sqrt(a));
+  }
+
+  function recomputeDistance() {
+    const hud    = document.getElementById('distanceHud');
+    const circle = document.getElementById('distanceCircle');
+    const value  = document.getElementById('distanceValue');
+    const hint   = document.getElementById('distanceHint');
+
+    if (myLat == null || targetLat == null) {
+      value.textContent = 'Awaiting both GPS signals…';
+      hint.textContent  = myLat == null
+        ? 'Allow location on this device to enable proximity beeps.'
+        : 'Waiting for target device to report its location.';
+      hud.className = 'distance-hud';
+      circle.textContent = '—';
+      scheduleNextBeep(null);
+      return;
+    }
+
+    const d = haversine(myLat, myLng, targetLat, targetLng);
+
+    let circleText;
+    if (d < 1000) circleText = Math.round(d) + 'm';
+    else          circleText = (d/1000).toFixed(2) + 'km';
+    circle.textContent = circleText;
+
+    value.textContent = d < 1000
+      ? `${d.toFixed(1)} meters away`
+      : `${(d/1000).toFixed(2)} km away (${Math.round(d)} m)`;
+
+    hud.classList.remove('state-far','state-medium','state-close','state-found');
+    if (d <= 3) {
+      hud.classList.add('state-found');
+      hint.textContent = '🎯 Device is within 3 meters — you are on top of it!';
+      circle.textContent = 'FOUND';
+      showFoundOverlay();
+      scheduleNextBeep(200);
+    } else if (d <= 10) {
+      hud.classList.add('state-close');
+      hint.textContent = 'Very close — check pockets, bags, under furniture.';
+      scheduleNextBeep(350);
+    } else if (d <= 50) {
+      hud.classList.add('state-close');
+      hint.textContent = 'Close — the device is in this building or area.';
+      scheduleNextBeep(900);
+    } else if (d <= 300) {
+      hud.classList.add('state-medium');
+      hint.textContent = 'Nearby — walk towards the marker on the map.';
+      scheduleNextBeep(1800);
+    } else {
+      hud.classList.add('state-far');
+      hint.textContent = 'Far away — follow the map marker first.';
+      scheduleNextBeep(3000);
+    }
+  }
+
+  // ─── Web Audio ──────────────────────────────────────────
+  let audioCtx = null;
+  function ensureAudio() {
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+      catch(e) { console.warn('No audio support'); }
+    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  function beep(freq = 880, durationMs = 120, volume = 0.15) {
+    if (!beepsOn) return;
+    ensureAudio();
+    if (!audioCtx) return;
+    const osc  = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    gain.gain.value = volume;
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + durationMs/1000);
+  }
+  function scheduleNextBeep(intervalMs) {
+    if (beepTimerId) { clearTimeout(beepTimerId); beepTimerId = null; }
+    nextBeepInterval = intervalMs;
+    if (intervalMs == null) return;
+    const tick = () => {
+      beep(intervalMs <= 400 ? 1200 : 880, intervalMs <= 400 ? 100 : 140);
+      beepTimerId = setTimeout(tick, intervalMs);
+    };
+    beepTimerId = setTimeout(tick, 100);
+  }
+  function toggleBeeps() {
+    beepsOn = !beepsOn;
+    document.getElementById('beepToggle').textContent = beepsOn ? '🔊 Beeps ON' : '🔇 Beeps OFF';
+    document.getElementById('beepToggle').classList.toggle('active', beepsOn);
+    if (!beepsOn && beepTimerId) { clearTimeout(beepTimerId); beepTimerId = null; }
+    else if (beepsOn) recomputeDistance();
+    if (beepsOn) ensureAudio();
+  }
+
+  // ─── FOUND ──────────────────────────────────────────────
+  function showFoundOverlay() {
+    if (foundShown) return;
+    foundShown = true;
+    document.getElementById('foundOverlay').classList.add('show');
+    if (beepsOn) {
+      beep(1200, 150, 0.2);
+      setTimeout(() => beep(1500, 200, 0.2), 180);
+    }
+  }
+  function dismissFound() {
+    document.getElementById('foundOverlay').classList.remove('show');
+  }
+
+  // ─── Offline / reconnect ────────────────────────────────
+  function handleHeartbeat(newEpoch) {
+    const wasOffline = deviceWasOffline;
+    const ageAtReboot = lastHeartbeatEpoch ? (Date.now() - lastHeartbeatEpoch) : 0;
+
+    if (wasOffline && ageAtReboot > LONG_OFFLINE_MS) {
+      triggerReconnectAlarm();
+    }
+    lastHeartbeatEpoch = newEpoch;
+    deviceWasOffline = false;
+    setOfflineUI(false, '');
+  }
+  function setOfflineUI(isOffline, reason) {
+    const banner = document.getElementById('offlineBanner');
+    const text   = document.getElementById('offlineText');
+    if (!banner) return;
+    if (isOffline) {
+      deviceWasOffline = true;
+      banner.style.display = 'flex';
+      banner.classList.remove('state-online');
+      text.textContent = 'DEVICE OFFLINE — ' + (reason || 'no signal');
+    } else {
+      banner.style.display = 'flex';
+      banner.classList.add('state-online');
+      text.textContent = 'DEVICE ONLINE — receiving live updates';
+    }
+  }
+  let alarmLoopId = null;
+  function triggerReconnectAlarm() {
+    document.getElementById('reconnectFlash').classList.add('show');
+    document.getElementById('reconnectPopup').classList.add('show');
+    startSiren();
+    if (navigator.vibrate) navigator.vibrate([500,200,500,200,500]);
+  }
+  function startSiren() {
+    ensureAudio();
+    if (!audioCtx || alarmLoopId) return;
+    const playSweep = () => {
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sawtooth';
+      const now = audioCtx.currentTime;
+      osc.frequency.setValueAtTime(600, now);
+      osc.frequency.linearRampToValueAtTime(1200, now + 0.5);
+      osc.frequency.linearRampToValueAtTime(600,  now + 1.0);
+      gain.gain.value = 0.22;
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + 1.05);
+    };
+    playSweep();
+    alarmLoopId = setInterval(playSweep, 1100);
+  }
+  function stopSiren() {
+    if (alarmLoopId) { clearInterval(alarmLoopId); alarmLoopId = null; }
+  }
+  function dismissReconnect() {
+    document.getElementById('reconnectFlash').classList.remove('show');
+    document.getElementById('reconnectPopup').classList.remove('show');
+    stopSiren();
+  }
+
+  // ─── Ring device ────────────────────────────────────────
+  function ringDevice() {
+    if (!currentUid) return;
+    const btn = document.getElementById('ringBtn');
+    const stopBtn = document.getElementById('stopRingBtn');
+
+    db.ref('users/' + currentUid + '/command').set('ring')
+      .then(() => {
+        btn.classList.add('ringing');
+        btn.textContent = '🔔 Ringing…';
+        stopBtn.style.display = 'inline-block';
+      })
+      .catch(err => {
+        console.error('Ring failed', err);
+        alert('Could not send ring command. Check connection.');
+      });
+  }
+  function stopRing() {
+    if (!currentUid) return;
+    const btn = document.getElementById('ringBtn');
+    const stopBtn = document.getElementById('stopRingBtn');
+
+    db.ref('users/' + currentUid + '/command').set('idle')
+      .then(() => {
+        btn.classList.remove('ringing');
+        btn.textContent = '🔔 Ring Device Now';
+        stopBtn.style.display = 'none';
+      });
+  }
+
+  // ─── Capture Photo ──────────────────────────────────────
+  function listenForPhotos(uid) {
+    if (photoListenerStarted) return;
+    photoListenerStarted = true;
+
+    if (photoRequestRef) photoRequestRef.off();
+    photoRequestRef = db.ref('users/' + uid + '/photoRequests/latest');
+    photoRequestRef.on('value', async snap => {
+      if (!snap.exists()) return;
+      const data = snap.val();
+      if (!data || !data.path) return;
+
+      try {
+        const url = await storage.ref(data.path).getDownloadURL();
+        showPhoto(url, data.at);
+      } catch (e) {
+        console.warn('Photo fetch failed', e);
+      }
+    });
+  }
+
+  function capturePhoto() {
+    if (!currentUid) return;
+    const btn = document.getElementById('photoBtn');
+    btn.disabled = true;
+    btn.textContent = '📸 Requesting…';
+
+    const reqId = Date.now().toString();
+    db.ref('users/' + currentUid + '/photoRequests/pending').set({
+      id: reqId,
+      requestedAt: new Date().toISOString()
+    }).catch(err => {
+      console.error('Photo request failed', err);
+      alert('Could not request photo.');
+    });
+
+    // Reset the button after 8 seconds regardless
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.textContent = '📸 Capture Photo';
+    }, 8000);
+  }
+
+  function requestAnotherPhoto() {
+    closePhotoModal();
+    capturePhoto();
+  }
+
+  function showPhoto(url, atIso) {
+    const modal = document.getElementById('photoModal');
+    const img = document.getElementById('photoImg');
+    const meta = document.getElementById('photoMeta');
+    img.src = url;
+    meta.textContent = atIso ? ('Captured ' + new Date(atIso).toLocaleString()) : 'Captured just now';
+    modal.classList.add('show');
+  }
+  function closePhotoModal() {
+    document.getElementById('photoModal').classList.remove('show');
+  }
+</script>
+</body>
+</html>
